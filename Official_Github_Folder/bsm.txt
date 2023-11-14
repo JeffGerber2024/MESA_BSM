@@ -1,0 +1,2 @@
+0.2500000 !ALP-photon coupling in 10^-10 GeV^(-1)
+1000.000000 !mass of the ALP in eV

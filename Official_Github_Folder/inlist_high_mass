@@ -1,0 +1,262 @@
+&star_job
+! Pre-mainsequence options
+      !If .true., shows which output options are going to be in each log (Turn true to make sure you're getting the data you want)
+      show_log_description_at_start = .false.
+      !MESA runs a 300 step relaxation with a set 1d-5 timestep on a chemically homogenous cloud, then increases the timestep until a radiative core develops. Highly recommended at the start of every run. I have reduced the number of steps to 50 here.
+      create_pre_main_sequence_model = .true.
+      pre_ms_relax_num_steps = 50
+      !initial central temperature for the pre-ms model (5d5 recommended by MIST, default is 3d5)
+      pre_ms_T_c = 5d5
+      !sets the metal fractions in the chemically homogeneous cloud. When using the AGSS09 data, use = 6, when using GS98 data, use = 3. Since AGSS09 is a more recent study of solar abundances, 6 recommended
+      initial_zfracs = 6
+
+! Files
+      !Saves a model when the code terminates. This is recommended for every inlist that you create, make sure it has a recognizable filename
+      save_model_when_terminate = .true.
+      save_model_filename = 'end_all.mod'
+
+! Inclusion of Rotation Parameters as Recommended by MIST (Need to be used in run_star_extras). This specifies that 3 additional parameters are to be used in run_star_extras, and that the amount of rotation for a star increases linearly from no rotation at full off to omega_div_omega_crit = 0.4 at full on. Since the inclusion of rotation can negatively impact model convergence, I only turned it on for the most massive stars.
+      extras_lrpar = 3
+      extras_rpar(1) = 120 !full off
+      extras_rpar(2) = 180 !full on
+      extras_rpar(3) = 0.4 !omega_div_omega_crit
+
+! When to stop
+      !When should the code end? For a general stopping condition, set this string to '', and it will save a model no matter the reason for stopping. In this case our reasons for stopping are mass-dependent and are specified in the run_star_extras file.
+      required_termination_code_string = ''
+
+! Nuclear Reaction Network
+      !If false, MESA will use the default network basic.net. While fine for main sequence evolution, it is insufficient for most other phases.
+      change_initial_net = .true.
+      !Specifies a net to use. This will change depending on what you want to run. For a summary of what reactions and particles are included in each net, open $MESA_DIR/data/net_data/nets. Be warned that the longer a net is, the longer running the code will take. Here I have used the nuclear reaction network from the test_suite case 20M_pre_ms_to_core_collapse, with a few other nuclear reactions added. Since the heaviest stars I simulated were 20 solar masses, it is unlikely that I would have needed a nuclear reaction network that included elements heavier than this.
+      new_net_name = 'approx21_cr60_plus_co56.net'
+      dump_missing_metals_into_heaviest = .false.
+
+      !Special rate factors indicate an additional reaction to the nuclear network. These added factors mimic those from the 12M_pre_ms_to_core_collapse test_suite case.
+      num_special_rate_factors = 2
+      reaction_for_special_factor(1) = 'r_c12_ag_o16'
+      special_rate_factor(1) = 1
+      filename_of_special_rate(1) = 'r_c12_ag_o16_kunz.txt'
+   
+      reaction_for_special_factor(2) = 'r_he4_he4_he4_to_c12'
+      special_rate_factor(2) = 1
+      filename_of_special_rate(2) = 'r_he4_he4_he4_to_c12_cf88.txt'
+
+! Omega Flags
+      change_D_omega_flag = .true.
+      new_D_omega_flag = .true.
+
+      change_initial_v_flag = .true.
+      new_v_flag = .true.
+
+! PGSTAR
+      !If true, plots appear. If false, no plots.
+      !pgstar_flag = .true.
+
+/ ! end of star_job namelist
+
+&eos
+
+
+/ ! end of eos namelist
+
+&kap
+!Kap deals with opacities, choice should usually match the most recent data (AGSS09 or sooner)
+      Zbase = 0.01817 ! Set to initial_z in run_star_extras
+
+      !opacities with AGSS09 abundances
+      kap_file_prefix = 'a09'
+      kap_lowT_prefix = 'lowT_fa05_a09p'
+      kap_CO_prefix = 'a09_co'
+
+!Type 2 opacities (CO opacities) should be used in this range for more accurate opacities. The full on and full off commands specify a range in which Type 2 opacities are used. Recommendation taken from MIST.
+      use_Type2_opacities = .true.
+      kap_Type2_full_off_X = 1d-3
+      kap_Type2_full_on_X = 1d-6
+
+/ ! end of kap namelist
+
+&controls
+!Most of the specific solver controls and settings are in this section. For more info, see the controls documentation on the MESA website.
+
+!Timestep Controls
+      !Sets the minimum and maximum time elapsed between steps.
+      min_timestep_limit=1d-20
+      max_years_for_timestep=1d6
+      !Cuts off evolution at 14 billion years, as these would be unconstrained due to the age of the universe.
+      max_age = 1.4d10
+
+!When to stop
+      !Sets a basic limit for when the code should stop. Gamma_center_limit = 20.0 corresponds to the making of a cool white dwarf, but other stopping conditions almost always trigger before this one (Mass-dependent conditions are included in the run_star_extras file)
+      gamma_center_limit = 20.0
+      !If the model has more than 1000 retries, you in all likelihood aren't getting good convergence. Adding this limit significantly decreases the runtime for nonconvergent runs (Otherwise the code continues to struggle until it breaches the minimum timestep limit)
+      max_number_retries = 1000
+
+!Use Other Physics
+      !Tells the code to include additional energy losses caused by physics beyond the standard model. The other_neu method is in the run_star_extras file
+      use_other_neu = .true.
+
+!Mixing, calibrated to Sun
+      !Sets the mixing length in the star to this parameter times a local pressure scale height. The default value is 2, but I found that 2.1910 is the value that best reproduces solar luminosities, radii, temperatures, and metal profiles at 4.61 Gyr. Good research notes the effect of this parameter on data.
+      mixing_length_alpha = 2.1910
+      !Tells code which set of mixing equations to use. Heyney refers to equations in Heyney et al.(1965). Recommended by MIST.
+      mlt_option = 'Henyey'
+      !If true, overshooting and rotational mixing are dealt with separately. Recommended by MIST, but may lead to convergence issues.
+      use_Ledoux_criterion = .true.
+      !Determines efficiency of semi-convective mixing, only works when Ledoux Criterion is true. 0 default, 0.1 recommended by MIST
+      alpha_semiconvection = 0.1
+      !Determines efficiency of thermohaline mixing, only works when Ledoux Criterion is true. 0 default, 666 recommended by MIST
+      thermohaline_coeff = 666.0
+
+!Atmosphere
+      !Designates the type of atmosphere the star is supposed to have. The default, least complicated, and generally most convergent atmospheric options are listed below. For degenerate cases like WD, this should change.
+      atm_option = 'T_tau'
+      atm_T_tau_relation = 'Eddington'
+      atm_T_tau_opacity = 'fixed'
+
+!Energy Equation
+      !Set to dedt for general cases, eps_grav for degenerate cases like WD
+      energy_eqn_option = 'dedt'
+
+!Overshoot Scheme, calibrated to Sun
+      !Overshooting deals with extensions of convecting zones to properly calculate the movement of material between the spherical shells that make up the simulation. Default MESA utilizes no overshoot, but I found that these are the values that best reproduce solar luminosities, radii, temperatures, and metal profiles at 4.61 Gyr. Good research notes the effect of these parameters on data.
+      overshoot_scheme(1) = 'exponential'
+      overshoot_zone_type(1) = 'any'
+      overshoot_zone_loc(1) = 'any'
+      overshoot_bdy_loc(1) = 'any'
+      overshoot_f(1) = 0.01849
+      overshoot_f0(1) = 0.009245
+
+!Rotational Controls
+      !These control the mixing caused by rotation within the star. These are the defaults for the non-rotating case, taken from the 1M_pre_ms_to_WD test case
+      am_D_mix_factor = 0.0333333333333333d0
+      D_DSI_factor = 1
+      D_SH_factor = 1
+      D_SSI_factor = 1
+      D_ES_factor = 1
+      D_GSF_factor = 1
+      D_ST_factor = 0
+      am_gradmu_factor = 0.05
+
+!Diffusion
+      !Specifies how diffusive mixing should occur between the different spherical shells.
+      do_element_diffusion = .true.
+      diffusion_dt_limit = 3.15e13
+      diffusion_min_T_at_surface = 1d3
+
+!Wind
+      !Specifies at what surface temperatures we should use each scheme for calculating mass loss due to stellar winds.
+      cool_wind_full_on_T = 0.8d4
+      hot_wind_full_on_T = 1.2d4
+      !Adopts the Dutch wind scheme for most cases, except opts for the 'de Jager' scheme for high-mass stars at significantly low temperatures.
+      cool_wind_RGB_scheme = 'Dutch'
+      cool_wind_AGB_scheme = 'Dutch'
+      hot_wind_scheme = 'Dutch'
+      Dutch_wind_lowT_scheme = 'de Jager'
+      !Sets scaling factors for the amount of mass loss caused by stellar winds.
+      Dutch_scaling_factor = 1.0
+
+!Core Boundaries (Taken from MIST)
+      he_core_boundary_h1_fraction = 1d-4 ! ignore hydrogen tail in calculating envelope mass
+      co_core_boundary_he4_fraction = 1d-4 ! slightly redefines he_layer_mass calculation
+      one_core_boundary_he4_c12_fraction = 1d-4
+
+
+!Solver Controls (Unchanged between runs because they would affect solar calibration or negatively affect convergence)
+      !Reduces the superadiabacity in radiation dominated convective regions (reduces gradT excess, making gradT closer to adiabatic gradient, boosting efficiency of energy transport)
+      okay_to_reduce_gradT_excess = .true.
+      !Extra pressure in surface boundary conditions. Increasing Pextra may help with convergence.
+      Pextra_factor = 2
+      !Defines the grid spacing. A larger value decreases the number of grid points, lower spatial resoulution. In less convergent regions, it may be easier to decrease mesh_delta_coeff.
+      mesh_delta_coeff = 0.5
+      !Target variation in parameters between models. The timestep will increase if the variation is less than this target.
+      varcontrol_target = 1d-4
+      !Helps with errors in Helium core flash (especially between 0.6 and 1.4 solar masses), causes residual calculation to ignore the exponential changes in Luminosity happening.
+      convergence_ignore_equL_residuals = .true.
+
+      !These controls specify that we want increased spatial resolution in areas of extra burning.
+      mesh_logX_species(1) = 'h1'
+      mesh_logX_min_for_extra(1) = -6
+      mesh_dlogX_dlogP_extra(1) = 0.25
+      
+      mesh_logX_species(2) = 'he4'
+      mesh_logX_min_for_extra(2) = -6
+      mesh_dlogX_dlogP_extra(2) = 0.25
+	  
+      mesh_logX_species(3) = 'c12'
+      mesh_logX_min_for_extra(3) = -6
+      mesh_dlogX_dlogP_extra(3) = 0.25
+		 
+
+!Solver Controls (Changed after nonconvergent runs to stop non-physical star failures). These provided convergent results in all of my runs, so it wasn't necessary to change them, and these were taken and adapted from the 20M_pre_ms_to_core_collapse test_suite case.
+      max_T_center_for_any_mass_loss = 1.1d9
+      sig_min_factor_for_high_Tcenter = 0.01
+      Tcenter_min_for_sig_min_factor_full_on = 3.2d9
+      Tcenter_max_for_sig_min_factor_full_off = 2.8d9
+
+      delta_lgTeff_limit =  0.01
+      delta_lgL_limit = 0.1     
+      delta_lgL_He_limit = 0.1
+
+      delta_lgRho_cntr_limit = 0.03
+      delta_lgRho_cntr_hard_limit = 0.1
+      delta_lgRho_limit = 0.1 
+      
+      delta_lgT_cntr_limit_only_after_near_zams = .true.
+      delta_lgT_cntr_limit = 0.003 
+      delta_lgT_cntr_hard_limit = 0.01
+
+      delta_lgT_max_limit_only_after_near_zams = .true.
+      delta_lgT_max_limit = 0.003     
+      delta_lgT_max_hard_limit = 0.01
+
+      dX_div_X_limit(2) = -1 ! for he4
+
+      dX_nuc_drop_limit = 2d-2
+      dX_nuc_drop_limit_at_high_T = -1  ! default = -1 = same as dX_nuc_drop_limit
+      dX_nuc_drop_min_X_limit = 1d-3
+      dX_nuc_drop_max_A_limit = 52   
+      dX_nuc_drop_hard_limit = 1d99
+
+      delta_XHe_cntr_limit = 0.01d0
+      delta_XHe_cntr_hard_limit = 0.03d0
+      delta_lg_XH_cntr_limit = 0.01
+      delta_lg_XHe_cntr_limit = 0.03d0
+      delta_lg_XC_cntr_limit = 0.01
+      delta_lg_XNe_cntr_limit = 0.03d0
+      delta_lg_XO_cntr_limit = 0.01
+      delta_lg_XSi_cntr_limit = 0.03d0
+      delta_XC_cntr_limit = 0.01
+      delta_XC_cntr_hard_limit = 0.03d0
+      delta_XNe_cntr_limit = 0.01
+      delta_XNe_cntr_hard_limit = 0.03d0
+      delta_XO_cntr_limit = 0.01
+      delta_XO_cntr_hard_limit = 0.03d0
+      delta_XSi_cntr_limit = 0.01
+      delta_XSi_cntr_hard_limit = 0.03d0
+
+      op_split_burn = .true.
+      op_split_burn_min_T = 1d9
+      burn_steps_limit = 150
+      burn_steps_hard_limit = 250
+      op_split_burn_eps = 1d-5
+      op_split_burn_odescal = 1d-5
+      
+      delta_Ye_highT_limit = 1d-3
+
+      make_gradr_sticky_in_solver_iters = .true.
+      max_allowed_nz = 50000
+	  	  
+!Output options (Tells MESA when and where to write data.)
+      photo_interval = 100
+      profile_interval = 100
+      history_interval = 100
+      terminal_interval = 1
+      write_header_frequency = 100
+
+!Initial metallicities and masses, as changed by the Batch Scripts
+
+initial_z = 0.018
+initial_y = 0.27553148046230047
+initial_mass = 20.0
+/ ! end of controls namelist

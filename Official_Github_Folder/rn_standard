@@ -1,0 +1,34 @@
+#!/bin/bash
+
+# this provides the definition of do_one (run one part of test)
+# do_one [inlist] [output model] [LOGS directory
+source "${MESA_DIR}/star/test_suite/test_suite_helpers"
+
+date "+DATE: %Y-%m-%d%nTIME: %H:%M:%S"
+
+do_one inlist_to_end_core_he_burn end_he_burn.mod LOGS_to_end_he_burn
+do_one inlist_to_TP_AGB end_agb.mod LOGS_to_TP_AGB
+do_one inlist_TP_AGB TP_AGB.mod LOGS_TP_AGB
+do_one inlist_to_cool final.mod LOGS_to_cool
+
+date "+DATE: %Y-%m-%d%nTIME: %H:%M:%S"
+
+echo 'finished'
+
+#!/bin/bash
+
+# this provides the definition of do_one (run one part of test)
+# do_one [inlist] [output model] [LOGS directory
+source "${MESA_DIR}/star/test_suite/test_suite_helpers"
+
+date "+DATE: %Y-%m-%d%nTIME: %H:%M:%S"
+
+do_one inlist_to_end_core_he_burn end_he_burn.mod LOGS_to_end_he_burn
+do_one inlist_to_TP_AGB end_agb.mod LOGS_to_TP_AGB
+do_one inlist_TP_AGB TP_AGB.mod LOGS_TP_AGB
+do_one inlist_to_cool final.mod LOGS_to_cool
+
+date "+DATE: %Y-%m-%d%nTIME: %H:%M:%S"
+
+echo 'finished'
+
