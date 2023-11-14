@@ -1,4 +1,7 @@
-! The 'extras_finish_step' and 'low_mass_wind_scheme' subroutines were taken from the MIST run_star_extras.f file. These methods include new winds definition, a key for turning up Blocker scaling, a key to start diffusion, and a way to save a model immediately following the AGB. The rest of the subroutines are taken from the 1M_pre_ms_to_wd run_star_extras.f90 file with some slight adjustments (they are basically MESAs default methods for the test suite).
+! The 'low_mass_wind_scheme' subroutine was taken from the MIST run_star_extras.f file (Found here: https://waps.cfa.harvard.edu/MIST/, used in Choi et al. 2016, 
+https://doi.org/10.48550/arXiv.1604.08592). This method includes new definitions for stellar wind calculations in MESA. The methods for adding energy loss caused by axion-like particles (faxion_get and other_neu_axions) were taken from https://github.com/fhiskens/mesa_alps (code used in Dolan et al. 2021, https://doi.org/10.48550/arXiv.2102.00379). The method for including additional energy loss caused by the neutrino magnetic moment (other_neu_NMM) was taken from https://doi.org/10.5281/zenodo.4281702 (used in Mori et al. 2020, 
+https://doi.org/10.48550/arXiv.2009.00293). The method for adding hidden photon energy loss into MESA was taken from email correspondence with the authors of Ayala et al. 2019 (
+https://doi.org/10.48550/arXiv.1910.11827). All of the previously mentioned subroutines were originally written for earlier versions of MESA, whereas here they have been updated to run on MESA version 23.05.1. The rest of the subroutines were taken with limit alterations from 1M_pre_ms_to_wd run_star_extras.f90 file (they are, with few exceptions, MESAs default methods for the test suite).
 ! ***********************************************************************
 !
 !   Copyright (C) 2010  The MESA Team
@@ -32,26 +35,27 @@
       
       implicit none
 
+      ! Definition of global variables
       real(dp) :: original_diffusion_dt_limit
       real(dp) :: burn_check = 0.0
       real(dp) :: postAGB_check = 0.0
-      Logical :: is_TPAGB = .false.
       real(dp) :: rot_set_check = 0.0
       logical :: wd_diffusion = .false.
       real(dp) :: X_C_init, X_N_init
 
+      ! Tells MESA to include the definition of subroutines associated with the test_suite and xtras_coeff_os folder
       include "test_suite_extras_def.inc"
       include 'xtra_coeff_os/xtra_coeff_os_def.inc'
 
-      !NMM Parameters
+      !NMM Parameter (The neutrino magnetic moment in units of 10^-12 times the Bohr Magneton)
       real(dp) :: mu_12 = 0.316
 
         !ALP Parameters
-        real(dp) :: axion_g10
+        real(dp) :: axion_g10 ! (The strength of the ALP-photon coupling, in units of 10^-10 Gev^-1) 
         real(dp) :: axion_g
-        real(dp) :: m_axion !in eV
+        real(dp) :: m_axion ! (The mass of the ALP in eV)
 
-        !Global arrays used for interpolation
+        !Global arrays used for interpolation (Used in faxion_get and array values defined in ALP_Data) 
         real(dp) :: mary(1001), kary(61), finit(1001*61), params(2)
         real(dp), pointer :: f1(:)
         real(dp), target :: farray(4*1001*61)
@@ -65,9 +69,11 @@
       
       contains
 
+      ! Tells MESA to include the pre-defined subroutines associated with the test_suite and xtras_coeff_os folder (The one above this simply states that we want certain functions to exist, this one actually sets them to the default definitions created there)
       include "test_suite_extras.inc"
       include 'xtra_coeff_os/xtra_coeff_os.inc'
       
+      ! Normal MESA controls definition with a few extra alterations
       subroutine extras_controls(id, ierr)
          integer, intent(in) :: id
          integer, intent(out) :: ierr
@@ -77,8 +83,8 @@
          if (ierr /= 0) return
          original_diffusion_dt_limit = s% diffusion_dt_limit
          include 'xtra_coeff_os/xtra_coeff_os_controls.inc'
-	 s% other_neu => other_neu_HP !other_neu_axions, other_neu_HP, other_neu_NMM
-         s% other_wind => low_mass_wind_scheme    
+	 s% other_neu => other_neu_HP !other_neu_axions, other_neu_HP, other_neu_NMM ! defines the other_neu function to include one of the three extensions to the Standard Model, such that when we call "use_other_neu" in the inlists, it will choose one of these to add.
+         s% other_wind => low_mass_wind_scheme    ! defines the other_wind function to correspond to our low_mass_wind_scheme function, such that when we call "use_other_wind" in the inlists, we use this instead.
          s% extras_startup => extras_startup
          s% extras_check_model => extras_check_model
          s% extras_finish_step => extras_finish_step
@@ -105,6 +111,7 @@
       
 !     set OPACITIES: Zbase for Type 2 Opacities automatically to the Z for the star
       s% kap_rq% Zbase = s% initial_z
+!     Prints the Zbase and initial helium abundance at the start of each run (after the pre-ms finishes)
       write(*,*) '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++'
       write(*,*) 'Zbase for Type 2 Opacities: ', s% kap_rq% Zbase
       write(*,*) '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++'
@@ -113,9 +120,9 @@
       write(*,*) '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++'
 
 
-!     set ROTATION: extra param are set in inlist: star_job
-      rot_full_off = s% job% extras_rpar(1) !1.2
-      rot_full_on = s% job% extras_rpar(2) !1.8
+!     set ROTATION for the rest of the run: extra param are set in inlist: star_job
+      rot_full_off = s% job% extras_rpar(1) !120
+      rot_full_on = s% job% extras_rpar(2) !180
 
       
       if (s% job% extras_rpar(3) > 0.0) then
@@ -148,7 +155,7 @@
       end if
       
       
-!     set VARCONTROL: for massive stars, turn up varcontrol gradually to help them evolve
+!     set VARCONTROL: for massive stars, turn up varcontrol gradually to help them evolve, this is only for stars above 30 solar masses
       vct30 = 1e-4
       vct100 = 3e-3
       
@@ -241,7 +248,7 @@
          call star_ptr(id, s, ierr)
          if (ierr /= 0) return
          extras_check_model = keep_going 
-      !     define STOPPING CRITERION: stopping criterion for C burning, massive stars.
+      !     define STOPPING CRITERION: stopping criterion for C burning, massive stars to be the replacement of Carbon in the core with heavier elements.
       if ((s% center_h1 < 1d-4) .and. (s% center_he4 < 1d-4)) then
          if ((s% center_c12 < 1d-4) .and. (s% initial_mass >= 10.0)) then
             termination_code_str(t_xtra1) = 'central C12 mass fraction below 1e-4'
@@ -251,10 +258,12 @@
             termination_code_str(t_xtra2) = 'central C12 mass fraction below 1e-2'
             s% termination_code = t_xtra2
             extras_check_model = terminate
+      !     define STOPPING CRITERION: defines stopping criterion for most < 10 solar mass stars to be the end of the AGB phase.
 	 else if ((PostAGB_check == 1) .and. (s% initial_mass < 10.0)) then
             termination_code_str(t_xtra3) = 'Reached Post AGB Phase, terminating'
             s% termination_code = t_xtra3
             extras_check_model = terminate
+      !     define STOPPING CRITERION: defines stopping criterion for stars between 6.5-8.5 solar masses to be the end of Helium Burning.
 	 else if ((s% initial_mass > 6.5) .and. (s% initial_mass < 8.5)) then
             termination_code_str(t_xtra4) = 'Reached End of Helium Burning Phase, terminating'
             s% termination_code = t_xtra4
@@ -279,7 +288,7 @@ integer function extras_finish_step(id)
         call star_ptr(id, s, ierr)
         if (ierr /= 0) return
         extras_finish_step = keep_going
-! postAGB: save a model
+! postAGB: save a model. Determines when the star has reached the end of the AGB phase, defined as release of most of the stellar envelope, formation of a dense Carbon core, and the beginning of a stellar collapse into a White Dwarf (and thus begin to heat the surface). For most low-intermediate mass stars, this marks the end of the simulation, so we save a model here.
         envelope_mass_fraction = 1d0 - max(s% he_core_mass, s% co_core_mass, s% one_core_mass)/s% star_mass
         if ((s% initial_mass < 10) .and. (envelope_mass_fraction < 0.1) .and. (s% center_h1 < 1d-4) .and. (s% center_he4 < 1d-4) &
         .and. (s% L_phot > 3.0) .and. (s% Teff > 7000.0)) then
@@ -297,7 +306,7 @@ integer function extras_finish_step(id)
 
 ! check DIFFUSION: to determine whether or not diffusion should happen
 ! no diffusion for fully convective, post-MS, and mega-old models
-! do diffusion during the WD phase
+! do diffusion during the WD phase (Most models don't get to this point, but if one wants to simulate white dwarf cooling they can)
 	    min_center_h1_for_diff = 1d-10
 	    diff_test1 = abs(s% mass_conv_core - s% star_mass) < 1d-2 !fully convective
 	    diff_test2 = s% star_age > 5d10 !really old
@@ -326,7 +335,7 @@ integer function extras_finish_step(id)
         integer :: h1, he4
         real(dp) :: plain_reimers, reimers_w, blocker_w, vink_w, center_h1, center_he4
         real(dp) :: alfa, w1, w2, Teff_jump, logMdot, dT, vinf_div_vesc, Zsurf
-        real(dp), parameter :: Zsolar_V = 0.019d0 ! for Vink et al formula (Look into this)
+        real(dp), parameter :: Zsolar_V = 0.019d0 ! for Vink et al formula
 	    type (star_info), pointer :: s
 	    ierr = 0
         call star_ptr(id, s, ierr)
@@ -420,7 +429,6 @@ integer function extras_finish_step(id)
 	
 	end subroutine low_mass_wind_scheme 
 
-      ! This function interpolates between the pre-processed grid of values stored in the work directory using MESA's interp2d function.
     subroutine other_neu_NMM(  &
             id, k, T, log10_T, Rho, log10_Rho, abar, zbar, log10_Tlim, flags, &
             loss, sources, ierr)
